@@ -2,7 +2,6 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 from typing import Optional
 from enum import Enum
-import re
 
 app = FastAPI()
 
@@ -51,24 +50,48 @@ class AssetStatus(str, Enum):
 
 class AssetCreate(BaseModel):
     serial_number: str
-    model: str = Field(min_length=2, max_length=255)
-    stock_available: int = Field(ge=0)
+    model: str = Field(
+        min_length=2,
+        max_length=255,
+        description="Tên model từ 2 đến 255 ký tự",
+    )
+    stock_available: int = Field(
+        ge=0,
+        description="Tồn kho phải lớn hơn hoặc bằng 0",
+    )
     status: AssetStatus
 
 
 class AssetUpdate(BaseModel):
     serial_number: str
-    model: str = Field(min_length=2, max_length=255)
-    stock_available: int = Field(ge=0)
+    model: str = Field(
+        min_length=2,
+        max_length=255,
+        description="Tên model từ 2 đến 255 ký tự",
+    )
+    stock_available: int = Field(
+        ge=0,
+        description="Tồn kho phải lớn hơn hoặc bằng 0",
+    )
     status: AssetStatus
 
 
 class AllocationCreate(BaseModel):
     asset_id: int
-    employee_email: str
-    allocated_quantity: int = Field(gt=0)
+    employee_email: str = Field(
+        pattern=r"^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$",
+        description="Email không đúng định dạng",
+    )
+    allocated_quantity: int = Field(
+        gt=0,
+        description="Số lượng phải lớn hơn 0",
+    )
     start_date: str
-    duration_months: int = Field(ge=1, le=12)
+    duration_months: int = Field(
+        ge=1,
+        le=12,
+        description="Thời gian mượn từ 1 đến 12 tháng",
+    )
 
 
 @app.post("/assets")
@@ -82,7 +105,10 @@ def create_asset(asset: AssetCreate):
                 detail="Serial number đã tồn tại!",
             )
 
-    new_asset = {"id": new_id, **asset.dict()}
+    new_asset = {
+        "id": new_id,
+        **asset.dict(),
+    }
 
     assets.append(new_asset)
 
@@ -101,8 +127,10 @@ def get_assets(
         result = [
             asset
             for asset in result
-            if keyword.strip().lower() in asset["serial_number"].lower()
-            or keyword.strip().lower() in asset["model"].lower()
+            if (
+                keyword.strip().lower() in asset["serial_number"].lower()
+                or keyword.strip().lower() in asset["model"].lower()
+            )
         ]
 
     if status:
@@ -187,7 +215,11 @@ def create_allocation(allocation: AllocationCreate):
     new_id = max((a["id"] for a in allocations), default=0) + 1
 
     asset = next(
-        (a for a in assets if a["id"] == allocation.asset_id),
+        (
+            a
+            for a in assets
+            if a["id"] == allocation.asset_id
+        ),
         None,
     )
 
@@ -200,21 +232,13 @@ def create_allocation(allocation: AllocationCreate):
     if asset["status"] != "READY":
         raise HTTPException(
             status_code=400,
-            detail="Thiết bị phải ở trạng thái READY",
+            detail="Thiết bị phải ở trạng thái READY!",
         )
 
     if allocation.allocated_quantity > asset["stock_available"]:
         raise HTTPException(
             status_code=400,
-            detail="Số lượng cấp phát vượt quá tồn kho",
-        )
-
-    email_pattern = r'^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$'
-
-    if not re.match(email_pattern, allocation.employee_email):
-        raise HTTPException(
-            status_code=400,
-            detail="Email không hợp lệ",
+            detail="Số lượng cấp phát vượt quá tồn kho!",
         )
 
     new_allocation = {
